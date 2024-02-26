@@ -5,6 +5,8 @@ import {IOneShot} from "./interfaces/IOneShot.sol";
 import {Credibility} from "./CredToken.sol";
 import {ICredToken} from "./interfaces/ICredToken.sol";
 
+import {console} from "forge-std/console.sol";
+
 contract RapBattle {
     /*//////////////////////////////////////////////////////////////
                             STATE VARIABLES
@@ -46,7 +48,7 @@ contract RapBattle {
             oneShotNft.transferFrom(msg.sender, address(this), _tokenId);
             credToken.transferFrom(msg.sender, address(this), _credBet);
         } else {
-            // credToken.transferFrom(msg.sender, address(this), _credBet);
+            //credToken.transferFrom(msg.sender, address(this), _credBet);
             _battle(_tokenId, _credBet);
         }
     }

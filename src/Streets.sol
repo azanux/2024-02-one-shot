@@ -46,7 +46,7 @@ contract Streets is IERC721Receiver {
         emit Unstaked(msg.sender, tokenId, stakedDuration);
         delete stakes[tokenId]; // Clear staking info
 
-        // Apply changes based on the days staked
+        // Apply changes based on the days staked //
         if (daysStaked >= 1) {
             stakedRapperStats.weakKnees = false;
             credContract.mint(msg.sender, 1);

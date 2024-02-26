@@ -7,6 +7,8 @@ import {Credibility} from "./CredToken.sol";
 import {IOneShot} from "./interfaces/IOneShot.sol";
 import {Streets} from "./Streets.sol";
 
+import {console} from "forge-std/console.sol";
+
 contract OneShot is IOneShot, ERC721URIStorage, Ownable {
     uint256 private _nextTokenId;
     Streets private _streetsContract;
