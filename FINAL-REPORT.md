@@ -476,3 +476,5 @@ function mintRapper() public {
 -   rapperStats[tokenId] = RapperStats({weakKnees: true, heavyArms: true, spaghettiSweater: true, calmAndReady: false, battlesWon: 0});
 }
 ```
+
+[L3] Not handling return values of transfer, approve, and transferFrom could lead to ignored failures.
